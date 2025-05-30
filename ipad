@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DropCleaner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c; /* Donkere achtergrond */
+            display: flex;
+            flex-direction: column; /* Verticaal stapelen voor titel, info, canvas */
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* Zorg dat de body de hele viewport hoogte vult */
+            width: 100vw; /* Zorg dat de body de hele viewport breedte vult */
+            margin: 0;
+            padding: 0; /* Verwijder body padding om echt full screen te zijn */
+            box-sizing: border-box;
+            overflow: hidden; /* Voorkom scrollbalken */
+        }
+        .game-container {
+            background-color: #1a202c; /* Aangepast naar donkerblauwe achtergrond */
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5);
+            padding: 1rem; /* Binnenpadding voor de container */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: calc(100vw - 2rem); /* 100% viewport breedte min padding */
+            height: calc(100vh - 2rem); /* 100% viewport hoogte min padding */
+            max-width: 1200px; /* Maximale breedte voor desktop */
+            max-height: 1200px; /* Maximale hoogte voor desktop */
+            box-sizing: border-box;
+            justify-content: space-between; /* Verdeel ruimte tussen elementen */
+        }
+        canvas {
+            background-color: #4a5568; /* Standaard spelgebied achtergrond, wordt overschreven door levelkleuren */
+            border-radius: 0.75rem;
+            display: block;
+            touch-action: none; /* Schakel standaard touch-acties zoals scrollen/zoomen uit */
+            /* Breedte en hoogte worden nu dynamisch ingesteld door JavaScript */
+            max-width: 100%; /* Zorg dat het niet over de container gaat */
+            max-height: 100%; /* Zorg dat het niet over de container gaat */
+            aspect-ratio: 1 / 1; /* Houd het vierkant (CSS fallback) */
+            flex-grow: 1; /* Laat het canvas de resterende ruimte innemen */
+            object-fit: contain; /* Zorg dat het canvas binnen de container past zonder te croppen */
+        }
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 1200px; /* Aangepast aan de nieuwe maximale breedte van het canvas */
+            margin-top: 0.5rem; /* Aangepaste marge */
+            margin-bottom: 0.5rem; /* Aangepaste marge */
+            color: #e2e8f0; /* Lichte tekst */
+            font-size: 1.125rem; /* Verkleinde lettergrootte voor desktop */
+            font-weight: bold;
+        }
+        .game-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #f6ad55; /* Oranje accent */
+            padding: 2.25rem 3.75rem; /* Geschaald van 1.5rem * 1.5 en 2.5rem * 1.5 */
+            border-radius: 1rem;
+            text-align: center;
+            font-size: 3rem; /* Geschaald van 2rem * 1.5 */
+            font-weight: bold;
+            z-index: 10;
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.3);
+        }
+        .game-message button {
+            background-color: #f6ad55;
+            color: #1a202c;
+            padding: 1.125rem 2.25rem; /* Geschaald van 0.75rem * 1.5 en 1.5rem * 1.5 */
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1.875rem; /* Geschaald van 1.25rem * 1.5 */
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 1.5rem; /* Geschaald van 1rem * 1.5 */
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+        .game-message button:hover {
+            background-color: #ed8936;
+            transform: translateY(-2px);
+        }
+        /* Game Title Styling */
+        #gameTitle {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 0.5rem; /* Aangepaste marge */
+            font-size: 2.5rem; /* Grote lettergrootte */
+            font-weight: bold;
+            color: #e2e8f0; /* Lichte tekstkleur */
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5); /* Schaduw voor leesbaarheid */
+        }
+
+        .letter-ball {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            width: 50px; /* Breedte van de bal */
+            height: 50px; /* Hoogte van de bal */
+            border-radius: 50%; /* Maak het rond */
+            background-color: #f6ad55; /* Oranje bal kleur */
+            color: #1a202c; /* Donkere tekstkleur in de bal */
+            margin: 0 5px; /* Ruimte tussen de ballen */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Subtiele schaduw */
+            transform: translateY(0);
+            transition: transform 0.1s ease-out;
+        }
+
+        .letter-ball:hover {
+            transform: translateY(-5px); /* Licht omhoog bij hover */
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .game-container {
+                padding: 0.5rem; /* Minder padding op kleine schermen */
+                width: calc(100vw - 1rem); /* Vul bijna de hele breedte */
+                height: calc(100vh - 1rem); /* Vul bijna de hele hoogte */
+            }
+            .game-info {
+                font-size: 1rem; /* Nog kleiner op mobiel */
+                margin-top: 0.25rem;
+                margin-bottom: 0.25rem;
+            }
+            .game-message {
+                font-size: 2.25rem; /* Geschaald van 1.5rem * 1.5 */
+                padding: 1.5rem 3rem; /* Geschaald van 1rem * 1.5 en 2rem * 1.5 */
+            }
+            .game-message button {
+                font-size: 1.5rem; /* Geschaald van 1rem * 1.5 */
+                padding: 0.9rem 1.8rem; /* Geschaald van 0.6rem * 1.5 en 1.2rem * 1.5 */
+            }
+            #gameTitle {
+                font-size: 1.5rem; /* Kleinere titel op mobiel */
+                margin-bottom: 0.25rem;
+            }
+            .letter-ball {
+                width: 35px; /* Kleinere ballen op mobiel */
+                height: 35px;
+                font-size: 1rem;
+                margin: 0 3px;
+            }
+        }
+
+        /* Sound control button */
+        #soundToggleButton {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background-color: rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            z-index: 20;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.3s ease;
+        }
+        #soundToggleButton:hover {
+            background-color: rgba(255, 255, 255, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div id="gameTitle"></div>
+
+        <div class="game-info">
+            <span>Score: <span id="score">0</span></span>
+            <span>Level: <span id="level">1</span></span>
+            <span>Drops over: <span id="drops-left">0</span></span>
+            <span id="speed-status">Snelheid: Normaal</span>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="gameMessage" class="game-message">
+            <p id="messageText"></p>
+            <button id="startButton" style="display: none;">Start Spel</button>
+            <button id="restartButton" style="display: none;">Opnieuw spelen</button>
+            <button id="nextLevelButton" style="display: none;">Volgend Level</button>
+            <button id="musicalInsightButton" class="mt-4" style="display: none;">✨ Muzikale Inzichten ✨</button>
+            <p id="llmResponse" class="mt-4 text-lg text-gray-300" style="display: none;"></p>
+            <div id="loadingSpinner" class="hidden mt-4 text-gray-300">Laden...</div>
+        </div>
+    </div>
+
+    <button id="soundToggleButton">🔊</button>
+
+    <script>
+        // Haal canvas en context op
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Constanten voor muurtiming (in milliseconden)
+        const WALLS_VISIBLE_DURATION = 25000; // Muren zichtbaar voor 25 seconden (nu solide)
+        const WALLS_BLINK_DISAPPEAR_DURATION = 2000; // Muren knipperen 2 seconden voordat ze verdwijnen
+        const WALLS_GONE_DURATION = 5000; // Muren zijn 5 seconden verdwenen
+        const WALLS_BLINK_REAPPEAR_DURATION = 4000; // Muren knipperen 4 seconden voordat ze weer verschijnen
+        const BLINK_TOGGLE_INTERVAL = 200; // Hoe snel muren knipperen (elke 200ms)
+
+        // Spelvariabelen
+        const BASE_SPEED = 5; // Basissnelheid voor de trompet
+        // FAST_SPEED_MULTIPLIER wordt nu per level gedefinieerd
+        let trumpet = { x: 0, y: 0, size: 0, dx: 0, dy: 0, speed: BASE_SPEED }; // size wordt later ingesteld
+        let notes = []; // Hernoemd naar drops in de logica
+        let walls = [];
+        let score = 0;
+        let gameOver = true;
+        let gameWon = false;
+        let currentLevel = 0;
+        let trumpetHits = 0; // Variabele om hits bij te houden (0, 1, 2)
+        let dropsCollectedWhileRed = 0; // Nieuwe teller voor drops verzameld terwijl rood
+        const DROPS_TO_RESET = 5; // Aantal drops nodig om te resetten
+
+        const HIT_TRUMPET_COLOR_ORANGE = '#f6ad55'; // Oranje kleur voor eerste hit
+        const HIT_BELL_COLOR_ORANGE = '#fcd34d'; // Lichtere oranje voor bel bij eerste hit
+        const HIT_TRUMPET_COLOR_RED = '#e53e3e'; // Rode kleur voor tweede hit
+        const HIT_BELL_COLOR_RED = '#f56565'; // Lichtere rode kleur voor trompet bel bij tweede hit
+        let hitMessageTimer = 0; // Timer voor tijdelijke hit-melding
+        const HIT_MESSAGE_DURATION = 1500; // 1.5 seconden voor hit-melding
+
+        // Variabelen voor onkwetsbaarheid na een hit
+        let isInvulnerable = false;
+        const INVULNERABILITY_DURATION = 1500; // 1.5 seconde onkwetsbaarheid na eerste hit (verhoogd)
+        let invulnerabilityTimer = 0; // Initialiseer onkwetsbaarheidstimer
+
+        const GRID_SIZE = 45; // Gewijzigd van 30 naar 45 (1.5x schaal)
+        const WALL_INSET = 15; // VERHOOGD om doorgangen groter te maken
+        
+        // Variabelen voor muurzichtbaarheidstoestand
+        // States: 'visible', 'blinking_disappear', 'gone', 'blinking_reappear'
+        let wallState = 'visible';
+        let stateTimer = 0;
+        let lastFrameTime = 0;
+        let wallBlinkToggle = true; // Gebruikt voor het tekenen van knipperende muren
+        let lastBlinkTime = 0;
+
+        // Level timer variabelen (verwijderd, maar variabelen blijven voor consistentie als ze ergens anders worden gebruikt)
+        let levelTimeRemaining = 0; // Tijd in milliseconden - niet meer gebruikt voor einde level
+        const REGROW_DURATION = 45000; // 45 seconden voor een stipje om weer uit te groeien tot een drop (gewijzigd)
+
+        // Device pixel ratio for scaling canvas drawing
+        const devicePixelRatio = window.devicePixelRatio || 1;
+
+        // Sound variables
+        let soundOn = true;
+        // Tone.js synths
+        const dropSynth = new Tone.Synth({
+            oscillator: { type: "sine" },
+            envelope: {
+                attack: 0.005,
+                decay: 0.1,
+                sustain: 0.05,
+                release: 0.1
+            }
+        }).toDestination(); // Zachte, hoge toon voor drops
+
+        const hitSynth = new Tone.MembraneSynth({
+            pitchDecay: 0.05,
+            octaves: 2,
+            envelope: {
+                attack: 0.001,
+                decay: 0.4,
+                sustain: 0.01,
+                release: 0.8,
+                attackCurve: "exponential"
+            }
+        }).toDestination(); // Een percussieve 'thump' voor muurrakingen
+
+        const levelCompletePolySynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: "triangle" }
+        }).toDestination(); // Voor level voltooid en game over deuntjes
+
+        // Level configuraties
+        const levels = [
+            {
+                name: "Level 1: Klassiek",
+                dropCount: 30,
+                wallCount: 30, // Gewijzigd van 15 naar 30
+                colors: {
+                    canvas: '#4a5568',
+                    walls: '#2c3e50',
+                    trumpet: '#4299e1',
+                    trumpetBell: '#a0aec0'
+                },
+                speedMultiplier: 1.8, // Snelheid voor Level 1
+            },
+            {
+                name: "Level 2: Boswandeling",
+                dropCount: 35,
+                wallCount: 40, // Gewijzigd van 20 naar 40
+                colors: {
+                    canvas: '#38a169',
+                    walls: '#2f855a',
+                    trumpet: '#4fd1c5',
+                    trumpetBell: '#edf2f7'
+                },
+                speedMultiplier: 1.4, // Verlaagde snelheid voor Level 2
+            },
+            {
+                name: "Level 3: Nachtelijke Melodie",
+                dropCount: 40,
+                wallCount: 50, // Gewijzigd van 25 naar 50
+                colors: {
+                    canvas: '#6b46c1',
+                    walls: '#553c9a',
+                    trumpet: '#805ad5',
+                    trumpetBell: '#e9d8fd'
+                },
+                speedMultiplier: 1.8, // Snelheid voor Level 3
+            }
+        ];
+
+        // UI elementen
+        const scoreDisplay = document.getElementById('score');
+        const levelDisplay = document.getElementById('level');
+        const dropsLeftDisplay = document.getElementById('drops-left');
+        const speedStatusDisplay = document.getElementById('speed-status'); // Nieuw element
+        const gameMessage = document.getElementById('gameMessage');
+        const messageText = document.getElementById('messageText');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const nextLevelButton = document.getElementById('nextLevelButton');
+        const musicalInsightButton = document.getElementById('musicalInsightButton');
+        const llmResponse = document.getElementById('llmResponse');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const gameTitleElement = document.getElementById('gameTitle');
+        const soundToggleButton = document.getElementById('soundToggleButton');
+
+        // Functie om canvas te vergroten/verkleinen
+        function resizeCanvas() {
+            const gameContainer = document.querySelector('.game-container');
+            const containerRect = gameContainer.getBoundingClientRect();
+
+            // Get the actual computed padding of the game-container
+            const computedStyle = window.getComputedStyle(gameContainer);
+            const paddingX = parseFloat(computedStyle.paddingLeft) + parseFloat(computedStyle.paddingRight);
+            const paddingY = parseFloat(computedStyle.paddingTop) + parseFloat(computedStyle.paddingBottom);
+
+            // Calculate the available space within the container's content area
+            // Account for the height taken by gameTitle and game-info
+            const gameTitleHeight = gameTitleElement.offsetHeight + parseFloat(computedStyle.marginBottom);
+            const gameInfoHeight = scoreDisplay.parentElement.offsetHeight + parseFloat(computedStyle.marginTop) + parseFloat(computedStyle.marginBottom);
+            
+            const availableWidth = containerRect.width - paddingX;
+            const availableHeight = containerRect.height - paddingY - gameTitleHeight - gameInfoHeight;
+
+            // The actual size of the square canvas should be the minimum of available width and height
+            const squareSize = Math.min(availableWidth, availableHeight);
+
+            // Apply this calculated square size to the canvas's CSS dimensions
+            canvas.style.width = squareSize + 'px';
+            canvas.style.height = squareSize + 'px';
+
+            // Set canvas drawing buffer size for sharp rendering
+            // Use the calculated squareSize for the drawing buffer, scaled by devicePixelRatio
+            canvas.width = squareSize * devicePixelRatio;
+            canvas.height = squareSize * devicePixelRatio;
+
+            // Reset scale and apply new scale for high DPI displays
+            ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset previous transformations
+            ctx.scale(devicePixelRatio, devicePixelRatio);
+            draw();
+        }
+
+        // Initialiseer spelelementen voor het huidige level
+        function initGame(levelIndex) {
+            score = 0;
+            gameOver = false;
+            gameWon = false;
+            trumpet.dx = 0;
+            trumpet.dy = 0;
+            trumpet.speed = BASE_SPEED; // Zorgt ervoor dat de snelheid ALTIJD correct wordt gereset bij elke level start
+            trumpetHits = 0; // Reset hits bij nieuwe start
+            dropsCollectedWhileRed = 0; // Reset drops teller
+            hitMessageTimer = 0;
+            isInvulnerable = false;
+            invulnerabilityTimer = 0;
+
+            gameMessage.style.display = 'none';
+            startButton.style.display = 'none';
+            restartButton.style.display = 'none';
+            nextLevelButton.style.display = 'none';
+            musicalInsightButton.style.display = 'none';
+            llmResponse.style.display = 'none';
+
+            currentLevel = levelIndex;
+            const levelConfig = levels[currentLevel];
+
+            canvas.style.backgroundColor = levelConfig.colors.canvas;
+
+            // Pas initiële trompetpositie aan op basis van GRID_SIZE
+            trumpet.size = GRID_SIZE; // Trumpet size is nu gelijk aan GRID_SIZE
+            trumpet.x = Math.floor((canvas.width / devicePixelRatio) / 2 / GRID_SIZE) * GRID_SIZE;
+            trumpet.y = Math.floor((canvas.height / devicePixelRatio) / 2 / GRID_SIZE) * GRID_SIZE;
+
+            notes = [];
+            for (let i = 0; i < levelConfig.dropCount; i++) {
+                let dropX, dropY;
+                let validPosition = false;
+                while (!validPosition) {
+                    dropX = Math.floor(Math.random() * ((canvas.width / devicePixelRatio) / GRID_SIZE)) * GRID_SIZE;
+                    dropY = Math.floor(Math.random() * ((canvas.height / devicePixelRatio) / GRID_SIZE)) * GRID_SIZE;
+
+                    let overlapsTrumpet = (dropX === trumpet.x && dropY === trumpet.y);
+                    let overlapsExistingDrop = notes.some(note => (note.x === dropX && note.y === dropY));
+
+                    let overlapsWall = walls.some(wall => (
+                        dropX < wall.x + wall.width &&
+                        dropX + (GRID_SIZE / 2) > wall.x && // Gebruik GRID_SIZE / 2 voor drop size
+                        dropY < wall.y + wall.height &&
+                        dropY + (GRID_SIZE / 2) > wall.y
+                    ));
+
+                    if (!overlapsTrumpet && !overlapsExistingDrop && !overlapsWall) {
+                        validPosition = true;
+                    }
+                }
+                notes.push({ x: dropX, y: dropY, size: GRID_SIZE / 2, state: 'active', regrowTimer: 0 }); // Note size is half of GRID_SIZE
+            }
+
+            walls = [];
+            for (let i = 0; i < levelConfig.wallCount; i++) {
+                let wallX, wallY, wallWidth, wallHeight;
+                let validPosition = false;
+                let attempts = 0;
+                const MAX_ATTEMPTS = 100;
+
+                while (!validPosition && attempts < MAX_ATTEMPTS) {
+                    wallX = Math.floor(Math.random() * ((canvas.width / devicePixelRatio) / GRID_SIZE)) * GRID_SIZE;
+                    wallY = Math.floor(Math.random() * ((canvas.height / devicePixelRatio) / GRID_SIZE)) * GRID_SIZE;
+                    wallWidth = (Math.floor(Math.random() * 3) + 1) * GRID_SIZE;
+                    wallHeight = (Math.floor(Math.random() * 3) + 1) * GRID_SIZE;
+
+                    let overlapsTrumpet = (
+                        trumpet.x < wallX + wallWidth &&
+                        trumpet.x + trumpet.size > wallX &&
+                        trumpet.y < wallY + wallHeight &&
+                        trumpet.y + trumpet.size > wallY
+                    );
+
+                    let overlapsNote = notes.some(note => (
+                        note.x < wallX + wallWidth &&
+                        note.x + note.size > wallX &&
+                        note.y < wallY + wallHeight &&
+                        note.y + note.size > wallY
+                    ));
+
+                    let overlapsOtherWall = walls.some(existingWall => (
+                        wallX < existingWall.x + existingWall.width &&
+                        wallX + wallWidth > existingWall.x &&
+                        wallY < existingWall.y + existingWall.height &&
+                        wallY + wallHeight > existingWall.y
+                    ));
+
+                    if (!overlapsTrumpet && !overlapsNote && !overlapsOtherWall) {
+                        walls.push({ x: wallX, y: wallY, width: wallWidth, height: wallHeight });
+                        validPosition = true;
+                    }
+                    attempts++;
+                }
+            }
+
+            wallState = 'visible'; // Start met solide muren
+            stateTimer = WALLS_VISIBLE_DURATION;
+            lastFrameTime = performance.now();
+            wallBlinkToggle = true; // Zorgt ervoor dat ze solide getekend worden
+            lastBlinkTime = performance.now();
+
+            speedStatusDisplay.textContent = `Snelheid: Normaal`; // Initial speed status
+            updateUI();
+        }
+
+        // Teken spelelementen
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width / devicePixelRatio, canvas.height / devicePixelRatio);
+
+            const levelConfig = levels[currentLevel];
+
+            // Muren tekenen: solide in 'visible' staat, knipperend in 'blinking_disappear'/'blinking_reappear'
+            if (wallState === 'visible' || ((wallState === 'blinking_disappear' || wallState === 'blinking_reappear') && wallBlinkToggle)) {
+                ctx.fillStyle = levelConfig.colors.walls;
+                walls.forEach(wall => {
+                    ctx.fillRect(wall.x + WALL_INSET, wall.y + WALL_INSET, wall.width - (WALL_INSET * 2), wall.height - (WALL_INSET * 2));
+                });
+            }
+
+            // Teken drops op basis van hun staat
+            notes.forEach(note => {
+                if (note.state === 'active') {
+                    ctx.fillStyle = '#f6ad55'; // Geel voor actieve drops
+                    ctx.beginPath();
+                    ctx.arc(note.x + note.size / 2, note.y + note.size / 2, note.size / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.closePath();
+                } else if (note.state === 'dot') {
+                    ctx.fillStyle = '#6b7280'; // Grijs voor stipjes
+                    ctx.beginPath();
+                    ctx.arc(note.x + note.size / 2, note.y + note.size / 2, note.size / 4, 0, Math.PI * 2); // Kleinere cirkel voor stipje
+                    ctx.fill();
+                    ctx.closePath();
+                }
+            });
+
+            // Teken trompet (knippert niet in de 'blinking_reappear' fase van muren)
+            if (wallState !== 'blinking_reappear' || wallBlinkToggle) {
+                // Bepaal spelerkleur op basis van hits
+                if (trumpetHits === 1) {
+                    ctx.fillStyle = HIT_TRUMPET_COLOR_ORANGE; // Oranje bij één hit
+                } else if (trumpetHits === 2) {
+                    ctx.fillStyle = HIT_TRUMPET_COLOR_RED; // Rood bij twee hits
+                } else {
+                    ctx.fillStyle = levelConfig.colors.trumpet; // Normale levelkleur
+                }
+                ctx.fillRect(trumpet.x, trumpet.y, trumpet.size, trumpet.size);
+
+                // Bepaal "bel" kleur op basis van hits
+                if (trumpetHits === 1) {
+                    ctx.fillStyle = HIT_BELL_COLOR_ORANGE; // Lichtere oranje/geel voor bel bij één hit
+                } else if (trumpetHits === 2) {
+                    ctx.fillStyle = HIT_BELL_COLOR_RED; // Lichtere rood voor bel bij twee hits
+                } else {
+                    ctx.fillStyle = levelConfig.colors.trumpetBell; // Normale belkleur
+                }
+                ctx.beginPath();
+                ctx.arc(trumpet.x + trumpet.size, trumpet.y + trumpet.size / 2, trumpet.size / 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.closePath();
+            }
+        }
+
+        // Update spel logica
+        function update() {
+            if (gameOver) return;
+
+            const currentTime = performance.now();
+            const deltaTime = currentTime - lastFrameTime;
+            lastFrameTime = currentTime;
+
+            // Update hit-melding timer
+            if (hitMessageTimer > 0) {
+                hitMessageTimer -= deltaTime;
+                if (hitMessageTimer <= 0) {
+                    if (!gameOver) {
+                        gameMessage.style.display = 'none';
+                    }
+                }
+            }
+
+            // Update onkwetsbaarheidstimer
+            if (isInvulnerable) {
+                invulnerabilityTimer -= deltaTime;
+                if (invulnerabilityTimer <= 0) {
+                    isInvulnerable = false;
+                }
+            }
+
+            // Update teruggroeitimers voor stipjes
+            notes.forEach(note => {
+                if (note.state === 'dot') {
+                    note.regrowTimer -= deltaTime;
+                    if (note.regrowTimer <= 0) {
+                        note.state = 'active'; // Groei weer uit tot een actief drop
+                        note.regrowTimer = 0;
+                        updateUI(); // Update drops over display
+                    }
+                }
+            });
+
+            stateTimer -= deltaTime;
+
+            // Knipperlogica alleen voor knipperende staten
+            if (wallState === 'blinking_disappear' || wallState === 'blinking_reappear') {
+                if (currentTime - lastBlinkTime > BLINK_TOGGLE_INTERVAL) {
+                    wallBlinkToggle = !wallBlinkToggle;
+                    lastBlinkTime = currentTime;
+                }
+            }
+
+            if (stateTimer <= 0) {
+                const currentLevelConfig = levels[currentLevel];
+                switch (wallState) {
+                    case 'visible': // Na de solide zichtbare fase, gaan ze knipperen om te verdwijnen
+                        wallState = 'blinking_disappear';
+                        stateTimer = WALLS_BLINK_DISAPPEAR_DURATION;
+                        wallBlinkToggle = true; // Zorg dat ze starten met knipperen
+                        lastBlinkTime = currentTime;
+                        trumpet.speed = BASE_SPEED * currentLevelConfig.speedMultiplier; // Versnel met level-specifieke multiplier
+                        speedStatusDisplay.textContent = `Snelheid: Snel!`;
+                        break;
+                    case 'blinking_disappear':
+                        wallState = 'gone';
+                        stateTimer = WALLS_GONE_DURATION;
+                        wallBlinkToggle = false; // Muren zijn nu onzichtbaar
+                        // Snelheid blijft snel
+                        speedStatusDisplay.textContent = `Snelheid: Snel!`;
+                        break;
+                    case 'gone':
+                        wallState = 'blinking_reappear';
+                        stateTimer = WALLS_BLINK_REAPPEAR_DURATION;
+                        wallBlinkToggle = false; // Start knipperen vanuit onzichtbare staat
+                        // Snelheid blijft snel
+                        speedStatusDisplay.textContent = `Snelheid: Snel!`;
+                        break;
+                    case 'blinking_reappear':
+                        wallState = 'visible'; // Terug naar de solide zichtbare staat
+                        stateTimer = WALLS_VISIBLE_DURATION;
+                        wallBlinkToggle = true; // Zorg dat ze solide getekend worden
+                        trumpet.speed = BASE_SPEED; // Terug naar normale snelheid
+                        speedStatusDisplay.textContent = `Snelheid: Normaal`;
+                        break;
+                }
+            }
+
+            // Beweeg trompet
+            trumpet.x += trumpet.dx;
+            trumpet.y += trumpet.dy;
+
+            // Houd trompet binnen canvasgrenzen
+            if (trumpet.x < 0) trumpet.x = 0;
+            if (trumpet.x + trumpet.size > canvas.width / devicePixelRatio) trumpet.x = canvas.width / devicePixelRatio - trumpet.size;
+            if (trumpet.y < 0) trumpet.y = 0;
+            if (trumpet.y + trumpet.size > canvas.height / devicePixelRatio) trumpet.y = canvas.height / devicePixelRatio - trumpet.size;
+
+            // Controleer op drops-botsing
+            for (let i = notes.length - 1; i >= 0; i--) {
+                const note = notes[i]; // 'note' object blijft voor de lus
+                // Bots alleen met actieve drops
+                if (note.state === 'active' &&
+                    trumpet.x < note.x + note.size &&
+                    trumpet.x + trumpet.size > note.x &&
+                    trumpet.y < note.y + note.size &&
+                    trumpet.y + trumpet.size > note.y
+                ) {
+                    notes[i].state = 'dot'; // Verander staat naar stipje
+                    notes[i].regrowTimer = REGROW_DURATION; // Start teruggroeitimer
+                    score += 10;
+                    if (soundOn) {
+                        // Speel een korte noot voor de drop
+                        dropSynth.triggerAttackRelease("C5", "8n", Tone.now() + 0.001); // Added small delay
+                    }
+                    updateUI();
+
+                    // Controleer voor "tweede kans" als trompet rood is
+                    if (trumpetHits === 2) {
+                        dropsCollectedWhileRed++;
+                        if (dropsCollectedWhileRed >= DROPS_TO_RESET) {
+                            trumpetHits = 0; // Reset naar normale staat (blauw)
+                            dropsCollectedWhileRed = 0; // Reset teller
+                            messageText.textContent = 'Geweldig! Je hebt een tweede kans gekregen!';
+                            gameMessage.style.display = 'block';
+                            hitMessageTimer = HIT_MESSAGE_DURATION; // Toon melding
+                            if (soundOn) {
+                                // Speel een vrolijk geluidje voor de tweede kans
+                                levelCompletePolySynth.triggerAttackRelease(["E5", "G5", "C6"], "8n", Tone.now() + 0.001);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Controleer op muurbotsing alleen als muren NIET 'gone' zijn EN trompet NIET onkwetsbaar is
+            if (wallState !== 'gone' && !isInvulnerable) {
+                walls.forEach(wall => {
+                    // Bereken effectieve muurafmetingen voor botsing
+                    let effectiveWallX = wall.x + WALL_INSET;
+                    let effectiveWallY = wall.y + WALL_INSET;
+                    let effectiveWallWidth = wall.width - (WALL_INSET * 2);
+                    let effectiveWallHeight = wall.height - (WALL_INSET * 2);
+
+                    // Controleer op botsing met de huidige effectieve muur
+                    if (
+                        trumpet.x < effectiveWallX + effectiveWallWidth &&
+                        trumpet.x + trumpet.size > effectiveWallX &&
+                        trumpet.y < effectiveWallY + effectiveWallHeight &&
+                        trumpet.y + trumpet.size > effectiveWallY
+                    ) {
+                        // Botsing met muur gedetecteerd
+                        if (trumpetHits === 0) {
+                            trumpetHits = 1; // Eerste hit
+                            messageText.textContent = 'Pas op! Je bent één keer geraakt! De trompet kleurt oranje.';
+                            gameMessage.style.display = 'block';
+                            hitMessageTimer = HIT_MESSAGE_DURATION; // Start timer voor tijdelijke melding
+                            isInvulnerable = true; // Maak trompet onkwetsbaar
+                            invulnerabilityTimer = INVULNERABILITY_DURATION; // Stel onkwetsbaarheidsduur in
+                            if (soundOn) {
+                                hitSynth.triggerAttackRelease("C3", "16n", Tone.now() + 0.001); // Added small delay
+                            }
+                        } else if (trumpetHits === 1) {
+                            trumpetHits = 2; // Tweede hit
+                            messageText.textContent = 'Nog één keer en je bent af! De trompet kleurt rood.';
+                            gameMessage.style.display = 'block';
+                            hitMessageTimer = HIT_MESSAGE_DURATION;
+                            isInvulnerable = true;
+                            invulnerabilityTimer = INVULNERABILITY_DURATION;
+                            if (soundOn) {
+                                hitSynth.triggerAttackRelease("D2", "16n", Tone.now() + 0.001); // Added small delay
+                            }
+                        } else if (trumpetHits === 2) {
+                            gameOver = true;
+                            messageText.textContent = `Game Over! Je raakte te vaak een muur in ${levels[currentLevel].name}.`;
+                            gameMessage.style.display = 'block';
+                            restartButton.style.display = 'block';
+                            musicalInsightButton.style.display = 'block'; // Toon LLM knop bij game over
+                            if (soundOn) {
+                                // Een game over geluid, bijv. een laag, dissonant akkoord
+                                levelCompletePolySynth.triggerAttackRelease(["C2", "F#2", "A2"], "0.5", Tone.now() + 0.001); // Added small delay
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Controleer of alle actieve drops verzameld zijn
+            const activeDropsCount = notes.filter(note => note.state === 'active').length;
+            if (activeDropsCount === 0) {
+                gameWon = true;
+                gameOver = true;
+                if (soundOn) {
+                    // Speel een kort vrolijk deuntje
+                    const now = Tone.now();
+                    levelCompletePolySynth.triggerAttackRelease(["C4", "E4", "G4"], "8n", now + 0.001); // Added small delay
+                    levelCompletePolySynth.triggerAttackRelease(["C5", "E5", "G5"], "8n", now + 0.2 + 0.001); // Added small delay
+                }
+                if (currentLevel < levels.length - 1) {
+                    messageText.textContent = `Level ${currentLevel + 1} voltooid! Score: ${score}. Ga naar het volgende level!`;
+                    nextLevelButton.style.display = 'block';
+                } else {
+                    messageText.textContent = `Gefeliciteerd! Je hebt alle levels voltooid! Eindscore: ${score}`;
+                    restartButton.style.display = 'block';
+                }
+                musicalInsightButton.style.display = 'block';
+                gameMessage.style.display = 'block';
+            }
+        }
+
+        // Update score en drops over display
+        function updateUI() {
+            scoreDisplay.textContent = score;
+            levelDisplay.textContent = currentLevel + 1;
+            dropsLeftDisplay.textContent = notes.filter(note => note.state === 'active').length; // Tel alleen actieve drops
+        }
+
+        // Spelloop
+        function gameLoop() {
+            if (!gameOver) {
+                update();
+                draw();
+            } else {
+                draw(); // Teken nog steeds de eindtoestand
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners voor toetsenbordinvoer (blijven voor desktop)
+        document.addEventListener('keydown', e => {
+            if (gameOver) return;
+            trumpet.dx = 0;
+            trumpet.dy = 0;
+
+            // Gebruik de huidige snelheid van de trompet
+            const currentTrumpetSpeed = trumpet.speed;
+
+            switch (e.key) {
+                case 'ArrowUp':
+                    trumpet.dy = -currentTrumpetSpeed;
+                    break;
+                case 'ArrowDown':
+                    trumpet.dy = currentTrumpetSpeed;
+                    break;
+                case 'ArrowLeft':
+                    trumpet.dx = -currentTrumpetSpeed;
+                    break;
+                case 'ArrowRight':
+                    trumpet.dx = currentTrumpetSpeed;
+                    break;
+            }
+        });
+
+        // Touch input voor canvas
+        canvas.addEventListener('touchstart', handleCanvasTouchStart);
+
+        function handleCanvasTouchStart(event) {
+            if (gameOver) return;
+            event.preventDefault(); // Voorkom standaard browsergedrag zoals scrollen/zoomen
+
+            // Start de audio context van Tone.js bij de eerste gebruikersinteractie
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+
+            const touch = event.touches[0];
+            const rect = canvas.getBoundingClientRect();
+
+            // Converteer touch-coördinaten naar canvas-coördinaten, rekening houdend met DPI-schaal
+            const canvasX = (touch.clientX - rect.left) * (canvas.width / rect.width) / devicePixelRatio;
+            const canvasY = (touch.clientY - rect.top) * (canvas.height / rect.height) / devicePixelRatio;
+
+            // Bereken het verschil tussen de touch-positie en het midden van de trompet
+            const diffX = canvasX - (trumpet.x + trumpet.size / 2);
+            const diffY = canvasY - (trumpet.y + trumpet.size / 2);
+
+            // Bepaal de dominante richting
+            trumpet.dx = 0;
+            trumpet.dy = 0;
+
+            // Gebruik de huidige snelheid van de trompet
+            const currentTrumpetSpeed = trumpet.speed;
+
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                // Horizontale beweging is dominanter
+                if (diffX > 0) {
+                    trumpet.dx = currentTrumpetSpeed; // Rechts
+                } else {
+                    trumpet.dx = -currentTrumpetSpeed; // Links
+                }
+            } else {
+                // Verticale beweging is dominanter
+                if (diffY > 0) {
+                    trumpet.dy = currentTrumpetSpeed; // Beneden
+                } else {
+                    trumpet.dy = -currentTrumpetSpeed; // Boven
+                }
+            }
+        }
+
+        // Start knop functionaliteit
+        startButton.addEventListener('click', () => {
+            initGame(0);
+            gameLoop();
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+        });
+
+        // Herstart knop functionaliteit
+        restartButton.addEventListener('click', () => {
+            initGame(currentLevel);
+            gameLoop();
+            if (Tone.context.state !== 'running') {
+                Tone.start();
+            }
+        });
+
+        // Volgend Level knop functionaliteit
+        nextLevelButton.addEventListener('click', () => {
+            if (currentLevel < levels.length - 1) {
+                initGame(currentLevel + 1);
+                gameLoop();
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+            }
+        });
+
+        // Sound Toggle functionaliteit
+        soundToggleButton.addEventListener('click', () => {
+            soundOn = !soundOn;
+            soundToggleButton.textContent = soundOn ? '🔊' : '🔇';
+            if (soundOn && Tone.context.state !== 'running') {
+                Tone.start();
+            }
+        });
+
+
+        // LLM Functie: Muzikale Inzichten Knop
+        musicalInsightButton.addEventListener('click', async () => {
+            musicalInsightButton.style.display = 'none';
+            loadingSpinner.style.display = 'block';
+            llmResponse.style.display = 'none';
+
+            const outcome = gameWon ? "gewonnen" : "verloren";
+            const prompt = `Schrijf een zeer korte, speelse en aanmoedigende muzikale recensie voor een speler die net een spel heeft voltooid waarin ze een trompet bestuurden om muzieknootjes (nu 'drops' genoemd) te verzamelen. De score was ${score} en de speler heeft ${outcome}. Houd het onder de 50 woorden.`;
+
+            let chatHistory = [];
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+            const payload = { contents: chatHistory };
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    llmResponse.textContent = text;
+                    llmResponse.style.display = 'block';
+                } else {
+                    llmResponse.textContent = "Kon geen muzikale inzichten genereren. Probeer het later opnieuw.";
+                    llmResponse.style.display = 'block';
+                }
+            } catch (error) {
+                console.error("Fout bij het aanroepen van de Gemini API:", error);
+                llmResponse.textContent = "Er is een fout opgetreden bij het genereren van inzichten. Controleer de console voor details.";
+                    llmResponse.style.display = 'block';
+            } finally {
+                loadingSpinner.style.display = 'none';
+            }
+        });
+
+        // Functie om de speltitel te maken met "bal" letters
+        function createGameTitle(titleText) {
+            gameTitleElement.innerHTML = ''; // Wis bestaande inhoud
+            const words = titleText.split(' ');
+            words.forEach((word, wordIndex) => {
+                if (wordIndex > 0) {
+                    // Voeg een spatie toe tussen woorden, maar niet als een bal
+                    const spaceSpan = document.createElement('span');
+                    spaceSpan.textContent = ' ';
+                    spaceSpan.style.margin = '0 5px'; // Pas spatiëring aan
+                    gameTitleElement.appendChild(spaceSpan);
+                }
+                for (let i = 0; i < word.length; i++) {
+                    const letter = word[i];
+                    const span = document.createElement('span');
+                    span.textContent = letter;
+                    span.classList.add('letter-ball');
+                    gameTitleElement.appendChild(span);
+                }
+            });
+        }
+
+        // Initiële setup bij laden van venster
+        window.onload = function() {
+            createGameTitle("DropCleaner"); // Stel de speltitel in
+            resizeCanvas();
+            messageText.textContent = 'Welkom bij DropCleaner!'; // Aangepaste welkomstboodschap
+            startButton.style.display = 'block';
+            gameMessage.style.display = 'block';
+            draw();
+        };
+
+        // Luister naar vensterformaatwijzigingen om canvas responsief te maken
+        window.addEventListener('resize', resizeCanvas);
+
+    </script>
+</body>
+</html>
